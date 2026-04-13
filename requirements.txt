@@ -1,0 +1,9 @@
+streamlit
+easyocr
+groq
+psycopg2-binary
+numpy
+scikit-learn
+pdfplumber
+pillow
+python-dotenv

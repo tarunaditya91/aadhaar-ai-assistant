@@ -1,0 +1,6 @@
+myvenv/
+.env
+__pycache__/
+*.pyc
+tests/
+Dockerfile
