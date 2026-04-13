@@ -9,9 +9,7 @@ from dotenv import load_dotenv
 # =========================
 load_dotenv()
 
-
-
-# Add root path (important)
+# Add root path
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 # =========================
@@ -31,9 +29,6 @@ from backend.aadhaar.verifier import calculate_match, normalize_aadhaar
 st.set_page_config(page_title="AI Assistant", layout="wide")
 st.title("🚀 AI Assistant")
 
-# DEFAULT_PDF = "data/hsg150.pdf"
-
-import os
 BASE_DIR = os.path.dirname(__file__)
 DEFAULT_PDF = os.path.join(BASE_DIR, "data/hsg150.pdf")
 
@@ -51,27 +46,12 @@ if "docs" not in st.session_state:
     st.session_state.vectorizer = None
     st.session_state.X = None
 
-
 # =========================
-# LOAD PDF
+# CACHED PDF LOAD
 # =========================
-def load_default_pdf():
-    docs, vectorizer, X = build_index_from_pdf(DEFAULT_PDF)
-    st.session_state.docs = docs
-    st.session_state.vectorizer = vectorizer
-    st.session_state.X = X
-
-
-def load_uploaded_pdf(uploaded_file):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        tmp.write(uploaded_file.read())
-        path = tmp.name
-
-    docs, vectorizer, X = build_index_from_pdf(path)
-    st.session_state.docs = docs
-    st.session_state.vectorizer = vectorizer
-    st.session_state.X = X
-
+@st.cache_resource
+def load_pdf_cached(path):
+    return build_index_from_pdf(path)
 
 # =========================
 # RAG UI
@@ -80,25 +60,39 @@ def run_rag():
 
     st.subheader("💬 RAG Chatbot")
 
-    # Sidebar PDF upload
+    # Sidebar upload
     uploaded_pdf = st.sidebar.file_uploader("Upload PDF", type=["pdf"])
 
+    # Upload PDF
     if uploaded_pdf:
         if st.sidebar.button("Use Uploaded PDF"):
             with st.spinner("Processing PDF..."):
-                load_uploaded_pdf(uploaded_pdf)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                    tmp.write(uploaded_pdf.read())
+                    path = tmp.name
+
+                docs, vectorizer, X = load_pdf_cached(path)
+                st.session_state.docs = docs
+                st.session_state.vectorizer = vectorizer
+                st.session_state.X = X
                 st.session_state.messages = []
+
                 st.success("Uploaded PDF loaded")
 
-@st.cache_resource
-def load_default_pdf_cached():
-    return build_index_from_pdf(DEFAULT_PDF)
+    # Load default PDF button
+    if st.session_state.docs is None:
+        st.warning("Click below to load default PDF")
 
-if st.session_state.docs is None:
-    docs, vectorizer, X = load_default_pdf_cached()
-    st.session_state.docs = docs
-    st.session_state.vectorizer = vectorizer
-    st.session_state.X = X
+        if st.button("Load Default PDF"):
+            with st.spinner("Processing PDF..."):
+                docs, vectorizer, X = load_pdf_cached(DEFAULT_PDF)
+
+                st.session_state.docs = docs
+                st.session_state.vectorizer = vectorizer
+                st.session_state.X = X
+
+                st.success("PDF Loaded Successfully!")
+        return  # 🚀 STOP execution until PDF loaded
 
     # Show chat history
     for msg in st.session_state.messages:
@@ -137,7 +131,6 @@ if st.session_state.docs is None:
 
             result = generate_followup_questions(user_input, chunks)
             st.session_state.suggestions = result.get("questions", [])
-
         except:
             st.session_state.suggestions = []
 
@@ -169,7 +162,6 @@ if st.session_state.docs is None:
         st.session_state.messages = []
         st.session_state.suggestions = []
 
-
 # =========================
 # AADHAAR UI
 # =========================
@@ -185,17 +177,14 @@ def run_aadhaar():
         if st.button("Verify"):
             with st.spinner("Processing..."):
 
-                # Save temp file
                 with tempfile.NamedTemporaryFile(delete=False) as tmp:
                     tmp.write(file.getvalue())
                     path = tmp.name
 
-                # OCR
                 text = extract_text(path)
                 st.subheader("📝 OCR Text")
                 st.write(text)
 
-                # LLM
                 data = extract_aadhaar_details(text)
 
                 if not data:
@@ -207,7 +196,6 @@ def run_aadhaar():
                 st.subheader("📦 Extracted Data")
                 st.json(data)
 
-                # DB check
                 db = fetch_user(data["aadhaar"])
 
                 if not db:
@@ -215,9 +203,7 @@ def run_aadhaar():
                     return
 
                 score = calculate_match(db, data)
-
                 st.success(f"Match Score: {score}%")
-
 
 # =========================
 # MAIN NAVIGATION
